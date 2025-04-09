@@ -1,5 +1,6 @@
 #include "ClubApprovalController.h"
 #include <drogon/HttpResponse.h>
+#include <drogon/HttpTypes.h>
 #include <drogon/orm/Exception.h>
 
 void ClubApprovalController::submitApproval(
@@ -79,6 +80,7 @@ void ClubApprovalController::submitApproval(
   }
 
   auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+  resp->setStatusCode(drogon::k200OK);
   callback(resp);
 }
 
@@ -193,6 +195,7 @@ void ClubApprovalController::approveClub(
   }
 
   auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+  resp->setStatusCode(drogon::k200OK);
   callback(resp);
 }
 
@@ -277,5 +280,6 @@ void ClubApprovalController::getApprovalList(
   }
 
   auto resp = HttpResponse::newHttpJsonResponse(response);
+  resp->setStatusCode(drogon::k200OK);
   callback(resp);
 }

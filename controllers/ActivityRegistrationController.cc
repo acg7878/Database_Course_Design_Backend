@@ -134,7 +134,7 @@ void ActivityRegistrationController::getRegistrationList(const HttpRequestPtr &r
     {
         response["error"] = "未登录";
         auto resp = HttpResponse::newHttpJsonResponse(response);
-        resp->setStatusCode(k401Unauthorized);
+        resp->setStatusCode(k401Unauthorized); // 未授权
         callback(resp);
         return;
     }
@@ -196,12 +196,16 @@ void ActivityRegistrationController::getRegistrationList(const HttpRequestPtr &r
         }
 
         response["registrations"] = registrations;
+        response["message"] = "报名记录获取成功";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK); // 成功返回 200 OK
+        callback(resp);
     }
     catch (const drogon::orm::DrogonDbException &e)
     {
         response["error"] = "数据库错误，无法获取报名列表";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError); // 服务器内部错误
+        callback(resp);
     }
-
-    auto resp = HttpResponse::newHttpJsonResponse(response);
-    callback(resp);
 }

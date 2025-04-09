@@ -37,6 +37,7 @@ void UserController::m_register(
 
   // 返回响应
   auto resp = drogon::HttpResponse::newHttpJsonResponse(json);
+  resp->setStatusCode(drogon::k200OK); 
   callback(resp);
 }
 
@@ -82,7 +83,6 @@ void UserController::login(
 
       resp->addCookie(userIdCookie);
       resp->addCookie(loginStatus);
-
       resp->setStatusCode(k200OK);
       callback(resp);
     } else {
@@ -114,7 +114,7 @@ void UserController::logout(
   Cookie loginStatus("is_logged_in", "");
   loginStatus.setPath("/");
   loginStatus.setMaxAge(0);
-
+  resp->setStatusCode(drogon::k200OK); 
   resp->addCookie(userIdCookie);
   resp->addCookie(loginStatus);
 
@@ -163,6 +163,7 @@ void UserController::info(
   }
 
   auto resp = HttpResponse::newHttpJsonResponse(response);
+  resp->setStatusCode(drogon::k200OK); 
   callback(resp);
 }
 
@@ -195,6 +196,7 @@ void UserController::update(
         username, password, email, phone, user_id);
     response["message"] = "更新成功";
     auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK); 
     callback(resp);
   } catch (...) {
     response["error"] = "数据库错误";
@@ -235,7 +237,7 @@ void UserController::remove(
     loginStatus.setMaxAge(0);
     resp->addCookie(userIdCookie);
     resp->addCookie(loginStatus);
-
+    resp->setStatusCode(drogon::k200OK); 
     callback(resp);
   } catch (...) {
     response["error"] = "数据库错误";

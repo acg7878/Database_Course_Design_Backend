@@ -1,5 +1,6 @@
 #include "ClubActivityController.h"
 #include <drogon/HttpResponse.h>
+#include <drogon/HttpTypes.h>
 #include <drogon/orm/Exception.h>
 
 // 创建活动
@@ -67,6 +68,7 @@ void ClubActivityController::createActivity(
 
     // 返回响应
     auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK);
     callback(resp);
 }
 
@@ -74,32 +76,36 @@ void ClubActivityController::createActivity(
 void ClubActivityController::getActivityList(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback, int clubId) const {
-  auto dbClient = drogon::app().getDbClient();
-  Json::Value response;
+    auto dbClient = drogon::app().getDbClient();
+    Json::Value response;
 
-  try {
-    // 查询指定社团的所有活动
-    auto result = dbClient->execSqlSync(
-        "SELECT activity_id, activity_title, activity_time FROM club_activity "
-        "WHERE club_id = ?",
-        clubId);
-    Json::Value activities(Json::arrayValue);
+    try {
+        // 查询指定社团的所有活动
+        auto result = dbClient->execSqlSync(
+            "SELECT activity_id, activity_title, activity_time FROM club_activity "
+            "WHERE club_id = ?",
+            clubId);
+        Json::Value activities(Json::arrayValue);
 
-    for (const auto &row : result) {
-      Json::Value activity;
-      activity["activity_id"] = row["activity_id"].as<int>();
-      activity["activity_title"] = row["activity_title"].as<std::string>();
-      activity["activity_time"] = row["activity_time"].as<std::string>();
-      activities.append(activity);
+        for (const auto &row : result) {
+            Json::Value activity;
+            activity["activity_id"] = row["activity_id"].as<int>();
+            activity["activity_title"] = row["activity_title"].as<std::string>();
+            activity["activity_time"] = row["activity_time"].as<std::string>();
+            activities.append(activity);
+        }
+
+        response["activities"] = activities;
+        response["message"] = "活动列表获取成功";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK); // 成功返回 200 OK
+        callback(resp);
+    } catch (const drogon::orm::DrogonDbException &e) {
+        response["error"] = "数据库错误，无法获取活动列表";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError); // 服务器内部错误
+        callback(resp);
     }
-
-    response["activities"] = activities;
-  } catch (const drogon::orm::DrogonDbException &e) {
-    response["error"] = "数据库错误，无法获取活动列表";
-  }
-
-  auto resp = HttpResponse::newHttpJsonResponse(response);
-  callback(resp);
 }
 
 // 获取活动详情
@@ -107,40 +113,43 @@ void ClubActivityController::getActivityDetail(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback,
     int activityId) const {
-  auto dbClient = drogon::app().getDbClient();
-  Json::Value response;
+    auto dbClient = drogon::app().getDbClient();
+    Json::Value response;
 
-  try {
-    // 查询活动详情
-    auto result = dbClient->execSqlSync(
-        "SELECT * FROM club_activity WHERE activity_id = ?", activityId);
+    try {
+        // 查询活动详情
+        auto result = dbClient->execSqlSync(
+            "SELECT * FROM club_activity WHERE activity_id = ?", activityId);
 
-    if (!result.empty()) {
-      response["activity_id"] = result[0]["activity_id"].as<int>();
-      response["club_id"] = result[0]["club_id"].as<int>();
-      response["activity_title"] =
-          result[0]["activity_title"].as<std::string>();
-      response["activity_time"] = result[0]["activity_time"].as<std::string>();
-      response["activity_location"] =
-          result[0]["activity_location"].as<std::string>();
-      response["registration_method"] =
-          result[0]["registration_method"].as<std::string>();
-      response["activity_description"] =
-          result[0]["activity_description"].as<std::string>();
-      response["publish_time"] = result[0]["publish_time"].as<std::string>();
-    } else {
-      response["error"] = "活动不存在";
-      auto resp = HttpResponse::newHttpJsonResponse(response);
-      resp->setStatusCode(k404NotFound);
-      callback(resp);
-      return;
+        if (!result.empty()) {
+            response["activity_id"] = result[0]["activity_id"].as<int>();
+            response["club_id"] = result[0]["club_id"].as<int>();
+            response["activity_title"] =
+                result[0]["activity_title"].as<std::string>();
+            response["activity_time"] = result[0]["activity_time"].as<std::string>();
+            response["activity_location"] =
+                result[0]["activity_location"].as<std::string>();
+            response["registration_method"] =
+                result[0]["registration_method"].as<std::string>();
+            response["activity_description"] =
+                result[0]["activity_description"].as<std::string>();
+            response["publish_time"] = result[0]["publish_time"].as<std::string>();
+
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+            resp->setStatusCode(k200OK); // 成功返回 200 OK
+            callback(resp);
+        } else {
+            response["error"] = "活动不存在";
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+            resp->setStatusCode(k404NotFound); // 未找到
+            callback(resp);
+        }
+    } catch (const drogon::orm::DrogonDbException &e) {
+        response["error"] = "数据库错误，无法获取活动详情";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError); // 服务器内部错误
+        callback(resp);
     }
-  } catch (const drogon::orm::DrogonDbException &e) {
-    response["error"] = "数据库错误，无法获取活动详情";
-  }
-
-  auto resp = HttpResponse::newHttpJsonResponse(response);
-  callback(resp);
 }
 
 void ClubActivityController::updateActivity(
@@ -204,6 +213,7 @@ void ClubActivityController::updateActivity(
 
         response["message"] = "活动更新成功";
         auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(drogon::k200OK);
         callback(resp);
     } catch (const drogon::orm::DrogonDbException &e) {
         response["error"] = "数据库错误，无法更新活动";
@@ -257,5 +267,6 @@ void ClubActivityController::deleteActivity(
     }
 
     auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK);
     callback(resp);
 }

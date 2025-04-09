@@ -34,6 +34,7 @@ void ClubController::create(const HttpRequestPtr &req, std::function<void(const 
     }
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK);
     callback(resp);
 }
 
@@ -61,6 +62,7 @@ void ClubController::list(const HttpRequestPtr &req, std::function<void(const Ht
     }
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK);
     callback(resp);
 }
 
@@ -92,6 +94,7 @@ void ClubController::detail(const HttpRequestPtr &req, std::function<void(const 
     }
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK);
     callback(resp);
 }
 

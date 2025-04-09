@@ -13,7 +13,7 @@ void ActivityCheckinController::checkin(
     if (userIdCookie.empty()) {
         response["error"] = "未登录";
         auto resp = HttpResponse::newHttpJsonResponse(response);
-        resp->setStatusCode(k401Unauthorized);
+        resp->setStatusCode(k401Unauthorized); // 未授权
         callback(resp);
         return;
     }
@@ -25,7 +25,7 @@ void ActivityCheckinController::checkin(
     if (!json || !json->isMember("activity_id")) {
         response["error"] = "缺少必需字段: activity_id";
         auto resp = HttpResponse::newHttpJsonResponse(response);
-        resp->setStatusCode(k400BadRequest);
+        resp->setStatusCode(k400BadRequest); // 错误请求
         callback(resp);
         return;
     }
@@ -41,7 +41,7 @@ void ActivityCheckinController::checkin(
         if (registrationResult[0]["count"].as<int>() == 0) {
             response["error"] = "您尚未报名该活动，无法签到";
             auto resp = HttpResponse::newHttpJsonResponse(response);
-            resp->setStatusCode(k403Forbidden);
+            resp->setStatusCode(k403Forbidden); // 禁止访问
             callback(resp);
             return;
         }
@@ -54,7 +54,7 @@ void ActivityCheckinController::checkin(
         if (checkinResult[0]["count"].as<int>() > 0) {
             response["error"] = "您已签到过该活动";
             auto resp = HttpResponse::newHttpJsonResponse(response);
-            resp->setStatusCode(k400BadRequest);
+            resp->setStatusCode(k400BadRequest); // 错误请求
             callback(resp);
             return;
         }
@@ -65,12 +65,15 @@ void ActivityCheckinController::checkin(
             user_id, activity_id);
 
         response["message"] = "签到成功";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK); // 成功返回 200 OK
+        callback(resp);
     } catch (const drogon::orm::DrogonDbException &e) {
         response["error"] = "数据库错误，无法签到";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError); // 服务器内部错误
+        callback(resp);
     }
-
-    auto resp = HttpResponse::newHttpJsonResponse(response);
-    callback(resp);
 }
 
 void ActivityCheckinController::getCheckinList(
@@ -102,5 +105,6 @@ void ActivityCheckinController::getCheckinList(
   }
 
   auto resp = HttpResponse::newHttpJsonResponse(response);
+  resp->setStatusCode(k200OK);
   callback(resp);
 }

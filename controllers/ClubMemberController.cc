@@ -52,7 +52,7 @@ void ClubMemberController::apply(const HttpRequestPtr &req, std::function<void(c
     }
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
-    resp->setStatusCode(drogon::k207MultiStatus);
+    resp->setStatusCode(drogon::k200OK); // 成功返回 200 OK
     callback(resp);
 }
 
@@ -137,6 +137,7 @@ void ClubMemberController::approve(const HttpRequestPtr &req, std::function<void
     }
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK); // 成功返回 200 OK
     callback(resp);
 }
 
@@ -159,14 +160,19 @@ void ClubMemberController::remove(const HttpRequestPtr &req, std::function<void(
 
     try {
         // 删除成员记录
-        dbClient->execSqlSync("DELETE FROM club_member WHERE id = ?", member_id);
+        dbClient->execSqlSync("DELETE FROM club_member WHERE member_id = ?", member_id);
 
         response["message"] = "成员已移除";
     } catch (const drogon::orm::DrogonDbException &e) {
         response["error"] = "数据库错误，无法移除成员";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError);
+        callback(resp);
+        return;
     }
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK); // 成功返回 200 OK
     callback(resp);
 }
 
@@ -178,8 +184,8 @@ void ClubMemberController::list(const HttpRequestPtr &req, std::function<void(co
     try {
         // 查询社团成员列表
         auto result = dbClient->execSqlSync(
-            "SELECT user.id AS user_id, user.username, club_member.status FROM club_member "
-            "JOIN user ON club_member.user_id = user.id WHERE club_member.club_id = ?",
+            "SELECT user.user_id, user.username, club_member.member_status, club_member.member_role FROM club_member "
+            "JOIN user ON club_member.user_id = user.user_id WHERE club_member.club_id = ?",
             club_id
         );
 
@@ -188,15 +194,21 @@ void ClubMemberController::list(const HttpRequestPtr &req, std::function<void(co
             Json::Value member;
             member["user_id"] = row["user_id"].as<int>();
             member["username"] = row["username"].as<std::string>();
-            member["status"] = row["status"].as<std::string>();
+            member["member_status"] = row["member_status"].as<std::string>();
+            member["member_role"] = row["member_role"].as<std::string>();
             members.append(member);
         }
 
         response["members"] = members;
     } catch (const drogon::orm::DrogonDbException &e) {
         response["error"] = "数据库错误，无法获取成员列表";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError);
+        callback(resp);
+        return;
     }
 
     auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(drogon::k200OK); // 成功返回 200 OK
     callback(resp);
 }
