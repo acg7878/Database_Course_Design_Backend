@@ -12,7 +12,7 @@ void ClubApprovalController::submitApproval(
   auto userIdCookie = req->getCookie("user_id");
   if (userIdCookie.empty()) {
     response["error"] = "未登录";
-    auto resp = HttpResponse::newHttpJsonResponse(response);
+    auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
     resp->setStatusCode(k401Unauthorized);
     callback(resp);
     return;
@@ -20,12 +20,14 @@ void ClubApprovalController::submitApproval(
 
   int user_id = std::stoi(userIdCookie);
 
-  // 获取请求体中的 club_name 和 club_introduction
+  // 获取请求体中的字段
   auto json = req->getJsonObject();
   if (!json || !json->isMember("club_name") ||
-      !json->isMember("club_introduction")) {
-    response["error"] = "缺少必需字段: club_name 或 club_introduction";
-    auto resp = HttpResponse::newHttpJsonResponse(response);
+      !json->isMember("club_introduction") || !json->isMember("contact_info") ||
+      !json->isMember("activity_venue")) {
+    response["error"] = "缺少必需字段: club_name, club_introduction, "
+                        "contact_info 或 activity_venue";
+    auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
     resp->setStatusCode(k400BadRequest);
     callback(resp);
     return;
@@ -33,20 +35,50 @@ void ClubApprovalController::submitApproval(
 
   std::string club_name = (*json)["club_name"].asString();
   std::string club_introduction = (*json)["club_introduction"].asString();
+  std::string contact_info = (*json)["contact_info"].asString();
+  std::string activity_venue = (*json)["activity_venue"].asString();
+
+  // 检查字段的合法性
+  if (club_name.empty() || club_name.size() > 100) {
+    response["error"] = "club_name 不能为空且长度不能超过 100 个字符";
+    auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  if (contact_info.empty() || contact_info.size() > 100) {
+    response["error"] = "contact_info 不能为空且长度不能超过 100 个字符";
+    auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  if (activity_venue.empty() || activity_venue.size() > 100) {
+    response["error"] = "activity_venue 不能为空且长度不能超过 100 个字符";
+    auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
 
   try {
     // 插入审批记录到 club_approval 表
-    dbClient->execSqlSync("INSERT INTO club_approval (club_name, applicant_id, "
-                          "approval_status, approval_opinion) "
-                          "VALUES (?, ?, '待审核', NULL)",
-                          club_name, user_id);
+    dbClient->execSqlSync(
+        "INSERT INTO club_approval (club_name, club_introduction, "
+        "contact_info, activity_venue, applicant_id, approval_status, "
+        "approval_opinion, approval_time) "
+        "VALUES (?, ?, ?, ?, ?, '待审核', NULL, NOW())",
+        club_name, club_introduction, contact_info, activity_venue, user_id);
 
     response["message"] = "审批申请已提交，等待管理员审批";
   } catch (const drogon::orm::DrogonDbException &e) {
+    LOG_ERROR << "Database error: " << e.base().what();
     response["error"] = "数据库错误，无法提交审批";
   }
 
-  auto resp = HttpResponse::newHttpJsonResponse(response);
+  auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
   callback(resp);
 }
 
@@ -61,7 +93,7 @@ void ClubApprovalController::approveClub(
   auto userIdCookie = req->getCookie("user_id");
   if (userIdCookie.empty()) {
     response["error"] = "未登录";
-    auto resp = HttpResponse::newHttpJsonResponse(response);
+    auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
     resp->setStatusCode(k401Unauthorized);
     callback(resp);
     return;
@@ -77,7 +109,7 @@ void ClubApprovalController::approveClub(
     if (userResult.empty() ||
         userResult[0]["user_type"].as<std::string>() != "管理员") {
       response["error"] = "无权限操作，只有管理员可以审批";
-      auto resp = HttpResponse::newHttpJsonResponse(response);
+      auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
       resp->setStatusCode(k403Forbidden);
       callback(resp);
       return;
@@ -88,7 +120,7 @@ void ClubApprovalController::approveClub(
     if (!json || !json->isMember("approval_status") ||
         !json->isMember("approval_opinion")) {
       response["error"] = "缺少必需字段: approval_status 或 approval_opinion";
-      auto resp = HttpResponse::newHttpJsonResponse(response);
+      auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
       resp->setStatusCode(k400BadRequest);
       callback(resp);
       return;
@@ -97,32 +129,41 @@ void ClubApprovalController::approveClub(
     std::string approval_status = (*json)["approval_status"].asString();
     std::string approval_opinion = (*json)["approval_opinion"].asString();
 
-    // 查询审批记录，获取 club_name 和申请用户的 user_id
+    // 查询审批记录，获取所有相关字段
     auto approvalResult =
-        dbClient->execSqlSync("SELECT club_name, applicant_id FROM "
-                              "club_approval WHERE approval_id = ?",
+        dbClient->execSqlSync("SELECT club_name, club_introduction, "
+                              "contact_info, activity_venue, applicant_id "
+                              "FROM club_approval WHERE approval_id = ?",
                               approvalId);
 
     if (approvalResult.empty()) {
       response["error"] = "未找到对应的审批记录";
-      auto resp = HttpResponse::newHttpJsonResponse(response);
+      auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
       resp->setStatusCode(k404NotFound);
       callback(resp);
       return;
     }
 
     std::string club_name = approvalResult[0]["club_name"].as<std::string>();
+    std::string club_introduction =
+        approvalResult[0]["club_introduction"].as<std::string>();
+    std::string contact_info =
+        approvalResult[0]["contact_info"].as<std::string>();
+    std::string activity_venue =
+        approvalResult[0]["activity_venue"].as<std::string>();
     int applicant_id = approvalResult[0]["applicant_id"].as<int>();
 
     // 如果审批通过，创建社团并设置申请用户为社长
     if (approval_status == "通过") {
       // 插入社团记录到 club 表
       auto clubResult = dbClient->execSqlSync(
-          "INSERT INTO club (club_name, founder_id) VALUES (?, ?)", club_name,
+          "INSERT INTO club (club_name, club_introduction, contact_info, "
+          "activity_venue, founder_id) "
+          "VALUES (?, ?, ?, ?, ?)",
+          club_name, club_introduction, contact_info, activity_venue,
           applicant_id);
 
       int club_id = clubResult.insertId();
-
       // 检查申请用户是否为管理员
       auto applicantResult = dbClient->execSqlSync(
           "SELECT user_type FROM user WHERE user_id = ?", applicant_id);
@@ -133,20 +174,25 @@ void ClubApprovalController::approveClub(
             "UPDATE user SET user_type = '社长' WHERE user_id = ?",
             applicant_id);
       }
+      // 将申请者添加到社团成员里并设置为社长
+      dbClient->execSqlSync("INSERT INTO club_member (user_id, club_id, "
+                            "join_date, member_status, member_role) "
+                            "VALUES (?, ?, NOW(), 'approved', '社长')",
+                            applicant_id, club_id);
     }
 
     // 更新审批记录
-    dbClient->execSqlSync(
-        "UPDATE club_approval SET approval_status = ?, approval_opinion = ?, "
-        "approval_time = NOW() WHERE approval_id = ?",
-        approval_status, approval_opinion, approvalId);
+    dbClient->execSqlSync("UPDATE club_approval SET approval_status = ?, "
+                          "approval_opinion = ? WHERE approval_id = ?",
+                          approval_status, approval_opinion, approvalId);
 
     response["message"] = "审批成功";
   } catch (const drogon::orm::DrogonDbException &e) {
+    LOG_ERROR << "Database error: " << e.base().what();
     response["error"] = "数据库错误，无法完成审批";
   }
 
-  auto resp = HttpResponse::newHttpJsonResponse(response);
+  auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
   callback(resp);
 }
 
@@ -186,13 +232,19 @@ void ClubApprovalController::getApprovalList(
     // 如果是管理员，查询所有审批记录
     std::string query;
     if (user_type == "管理员") {
-      query = "SELECT approval_id, club_name, applicant_id, approval_status, "
-              "approval_opinion, approval_time FROM club_approval";
+      query = "SELECT ca.approval_id, ca.club_name, ca.applicant_id, "
+              "u.username AS applicant_name, "
+              "ca.approval_status, ca.approval_opinion, ca.approval_time "
+              "FROM club_approval ca "
+              "JOIN user u ON ca.applicant_id = u.user_id";
     } else {
       // 如果是普通用户，只查询自己的审批记录
-      query = "SELECT approval_id, club_name, applicant_id, approval_status, "
-              "approval_opinion, approval_time FROM club_approval WHERE "
-              "applicant_id = ?";
+      query = "SELECT ca.approval_id, ca.club_name, ca.applicant_id, "
+              "u.username AS applicant_name, "
+              "ca.approval_status, ca.approval_opinion, ca.approval_time "
+              "FROM club_approval ca "
+              "JOIN user u ON ca.applicant_id = u.user_id "
+              "WHERE ca.applicant_id = ?";
     }
 
     // 执行查询
@@ -206,6 +258,7 @@ void ClubApprovalController::getApprovalList(
       approval["approval_id"] = row["approval_id"].as<int>();
       approval["club_name"] = row["club_name"].as<std::string>();
       approval["applicant_id"] = row["applicant_id"].as<int>();
+      approval["applicant_name"] = row["applicant_name"].as<std::string>();
       approval["approval_status"] = row["approval_status"].as<std::string>();
       approval["approval_opinion"] =
           row["approval_opinion"].isNull()
@@ -219,6 +272,7 @@ void ClubApprovalController::getApprovalList(
 
     response["approvals"] = approvals;
   } catch (const drogon::orm::DrogonDbException &e) {
+    LOG_ERROR << "Database error: " << e.base().what();
     response["error"] = "数据库错误，无法获取审批记录";
   }
 
