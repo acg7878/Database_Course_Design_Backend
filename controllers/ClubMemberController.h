@@ -23,6 +23,8 @@ public:
   // 获取社团成员列表
   ADD_METHOD_TO(ClubMemberController::list, "/club/member/list/{1}",
                 Get); // {1} 表示 club_id
+  // 获取用户作为社长的所有社团下的申请列表
+  ADD_METHOD_TO(ClubMemberController::getAllApplications, "/club/member/all_applications", Get);
   METHOD_LIST_END
 
   // 申请加入社团方法
@@ -41,6 +43,10 @@ public:
   void list(const HttpRequestPtr &req,
             std::function<void(const HttpResponsePtr &)> &&callback,
             int club_id) const;
+
+  // 获取用户作为社长的所有社团下的申请列表方法
+  void getAllApplications(const HttpRequestPtr &req,
+                          std::function<void(const HttpResponsePtr &)> &&callback) const;
 };
 
 namespace drogon {

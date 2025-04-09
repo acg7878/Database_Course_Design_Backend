@@ -28,6 +28,8 @@ public:
                 Put);
   ADD_METHOD_TO(ClubActivityController::deleteActivity, "/activity/delete/{1}",
                 Delete);
+  // 获取当前用户所属社团的所有活动
+  ADD_METHOD_TO(ClubActivityController::getAllActivitiesByUser, "/club/activity/all_by_user", Get);
   METHOD_LIST_END
 
   void createActivity(const HttpRequestPtr &req,
@@ -47,6 +49,10 @@ public:
   void deleteActivity(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback,
                       int activityId) const;
+
+  // 获取当前用户所属社团的所有活动方法
+  void getAllActivitiesByUser(const HttpRequestPtr &req,
+                              std::function<void(const HttpResponsePtr &)> &&callback) const;
 };
 
 namespace drogon {

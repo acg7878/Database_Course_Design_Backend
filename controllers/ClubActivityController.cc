@@ -270,3 +270,78 @@ void ClubActivityController::deleteActivity(
     resp->setStatusCode(drogon::k200OK);
     callback(resp);
 }
+
+// 获取用户所属社团的所有活动
+void ClubActivityController::getAllActivitiesByUser(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) const {
+    auto dbClient = drogon::app().getDbClient();
+    Json::Value response;
+
+    // 从 Cookie 中获取当前登录用户的 user_id
+    auto userIdCookie = req->getCookie("user_id");
+    if (userIdCookie.empty()) {
+        response["error"] = "未登录";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k401Unauthorized); // 未授权
+        callback(resp);
+        return;
+    }
+
+    int user_id = std::stoi(userIdCookie);
+
+    try {
+        // 查询用户所属的所有社团
+        auto clubResult = dbClient->execSqlSync(
+            "SELECT c.club_id, c.club_name FROM club_member m "
+            "JOIN club c ON m.club_id = c.club_id "
+            "WHERE m.user_id = ?",
+            user_id);
+
+        if (clubResult.empty()) {
+            response["error"] = "您没有加入任何社团";
+            auto resp = HttpResponse::newHttpJsonResponse(response);
+            resp->setStatusCode(k404NotFound); // 未找到
+            callback(resp);
+            return;
+        }
+
+        Json::Value activities(Json::arrayValue);
+
+        // 遍历每个社团，查询其活动列表
+        for (const auto &clubRow : clubResult) {
+            int club_id = clubRow["club_id"].as<int>();
+            std::string club_name = clubRow["club_name"].as<std::string>();
+
+            auto activityResult = dbClient->execSqlSync(
+                "SELECT a.activity_id, a.activity_title, a.activity_time, a.activity_location,a.activity_description "
+                "FROM club_activity a "
+                "WHERE a.club_id = ?",
+                club_id);
+
+            for (const auto &activityRow : activityResult) {
+                Json::Value activity;
+                activity["club_id"] = club_id;
+                activity["club_name"] = club_name;
+                activity["activity_id"] = activityRow["activity_id"].as<int>();
+                activity["activity_title"] = activityRow["activity_title"].as<std::string>();
+                activity["activity_time"] = activityRow["activity_time"].as<std::string>();
+                activity["activity_location"] = activityRow["activity_location"].as<std::string>();
+                activity["activity_description"] = activityRow["activity_description"].as<std::string>();
+                activities.append(activity);
+            }
+        }
+
+        response["activities"] = activities;
+        response["message"] = "活动列表获取成功";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK); // 成功返回 200 OK
+        callback(resp);
+    } catch (const drogon::orm::DrogonDbException &e) {
+        LOG_ERROR << "Database error: " << e.base().what();
+        response["error"] = "数据库错误，无法获取活动列表";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError); // 服务器内部错误
+        callback(resp);
+    }
+}
