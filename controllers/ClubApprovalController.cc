@@ -178,8 +178,8 @@ void ClubApprovalController::approveClub(
       }
       // 将申请者添加到社团成员里并设置为社长
       dbClient->execSqlSync("INSERT INTO club_member (user_id, club_id, "
-                            "join_date, member_status, member_role) "
-                            "VALUES (?, ?, NOW(), 'approved', '社长')",
+                            "join_date, member_role) "
+                            "VALUES (?, ?, NOW(), '社长')",
                             applicant_id, club_id);
     }
 
