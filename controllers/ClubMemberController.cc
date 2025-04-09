@@ -172,9 +172,9 @@ void ClubMemberController::list(
   Json::Value response;
 
   try {
-    // 查询社团成员列表
+    // 查询社团成员列表，包含 email 和 phone 字段
     auto result =
-        dbClient->execSqlSync("SELECT user.user_id, user.username, "
+        dbClient->execSqlSync("SELECT user.user_id, user.username, user.email, user.phone, "
                               "club_member.member_role FROM club_member "
                               "JOIN user ON club_member.user_id = user.user_id "
                               "WHERE club_member.club_id = ?",
@@ -185,6 +185,8 @@ void ClubMemberController::list(
       Json::Value member;
       member["user_id"] = row["user_id"].as<int>();
       member["username"] = row["username"].as<std::string>();
+      member["email"] = row["email"].isNull() ? "" : row["email"].as<std::string>();
+      member["phone"] = row["phone"].isNull() ? "" : row["phone"].as<std::string>();
       member["member_role"] = row["member_role"].as<std::string>();
       members.append(member);
     }
