@@ -300,7 +300,7 @@ void ClubActivityController::getAllActivitiesByUser(
 
         if (clubResult.empty()) {
             response["error"] = "您没有加入任何社团";
-            auto resp = HttpResponse::newHttpJsonResponse(response);
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
             resp->setStatusCode(k404NotFound); // 未找到
             callback(resp);
             return;
@@ -314,7 +314,7 @@ void ClubActivityController::getAllActivitiesByUser(
             std::string club_name = clubRow["club_name"].as<std::string>();
 
             auto activityResult = dbClient->execSqlSync(
-                "SELECT a.activity_id, a.activity_title, a.activity_time, a.activity_location,a.activity_description "
+                "SELECT a.activity_id, a.activity_title, a.activity_time, a.activity_location, a.activity_description "
                 "FROM club_activity a "
                 "WHERE a.club_id = ?",
                 club_id);
@@ -328,6 +328,19 @@ void ClubActivityController::getAllActivitiesByUser(
                 activity["activity_time"] = activityRow["activity_time"].as<std::string>();
                 activity["activity_location"] = activityRow["activity_location"].as<std::string>();
                 activity["activity_description"] = activityRow["activity_description"].as<std::string>();
+
+                // 查询报名状态
+                auto registrationResult = dbClient->execSqlSync(
+                    "SELECT registration_status FROM activity_registration "
+                    "WHERE user_id = ? AND activity_id = ?",
+                    user_id, activityRow["activity_id"].as<int>());
+
+                if (!registrationResult.empty()) {
+                    activity["registration_status"] = registrationResult[0]["registration_status"].as<std::string>();
+                } else {
+                    activity["registration_status"] = "none"; // 未报名
+                }
+
                 activities.append(activity);
             }
         }
@@ -345,3 +358,132 @@ void ClubActivityController::getAllActivitiesByUser(
         callback(resp);
     }
 }
+
+void ClubActivityController::getAllActivitiesByClub(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) const {
+    auto dbClient = drogon::app().getDbClient();
+    Json::Value response;
+
+    // 从请求体中获取 club_id
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("club_id")) {
+        response["error"] = "缺少必需字段: club_id";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k400BadRequest); // 错误请求
+        callback(resp);
+        return;
+    }
+
+    int clubId = (*json)["club_id"].asInt();
+
+    try {
+        // 查询指定社团的所有活动
+        auto activityResult = dbClient->execSqlSync(
+            "SELECT activity_id, activity_title, activity_time, activity_location, activity_description "
+            "FROM club_activity WHERE club_id = ?",
+            clubId);
+
+        if (activityResult.empty()) {
+            response["error"] = "该社团没有任何活动";
+            auto resp = HttpResponse::newHttpJsonResponse(response);
+            resp->setStatusCode(k404NotFound); // 未找到
+            callback(resp);
+            return;
+        }
+
+        Json::Value activities(Json::arrayValue);
+
+        // 遍历活动结果
+        for (const auto &activityRow : activityResult) {
+            Json::Value activity;
+            activity["activity_id"] = activityRow["activity_id"].as<int>();
+            activity["activity_title"] = activityRow["activity_title"].as<std::string>();
+            activity["activity_time"] = activityRow["activity_time"].as<std::string>();
+            activity["activity_location"] = activityRow["activity_location"].as<std::string>();
+            activity["activity_description"] = activityRow["activity_description"].as<std::string>();
+            activities.append(activity);
+        }
+
+        response["activities"] = activities;
+        response["message"] = "活动列表获取成功";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK); // 成功返回 200 OK
+        callback(resp);
+    } catch (const drogon::orm::DrogonDbException &e) {
+        LOG_ERROR << "Database error: " << e.base().what();
+        response["error"] = "数据库错误，无法获取活动列表";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError); // 服务器内部错误
+        callback(resp);
+    }
+}
+
+void ClubActivityController::getActivityRegistrationsByClub(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) const {
+
+    auto dbClient = drogon::app().getDbClient();
+    Json::Value response;
+
+    // 从请求体中获取 club_id
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("club_id")) {
+        response["error"] = "缺少必需字段: club_id";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k400BadRequest);
+        callback(resp);
+        return;
+    }
+
+    int clubId = (*json)["club_id"].asInt();
+
+    try {
+        // 查询某社团下所有活动的报名情况
+        auto result = dbClient->execSqlSync(
+            "SELECT a.activity_id, a.activity_title, r.registration_id, r.user_id, u.username, "
+            "r.registration_date, r.payment_status, r.registration_status "
+            "FROM club_activity a "
+            "JOIN activity_registration r ON a.activity_id = r.activity_id "
+            "JOIN user u ON r.user_id = u.user_id "
+            "WHERE a.club_id = ?",
+            clubId);
+
+        if (result.empty()) {
+            response["message"] = "该社团暂无活动报名数据";
+            response["registrations"] = Json::arrayValue;
+            auto resp = HttpResponse::newHttpJsonResponse(response);
+            resp->setStatusCode(k200OK);
+            callback(resp);
+            return;
+        }
+
+        Json::Value registrations(Json::arrayValue);
+        for (const auto &row : result) {
+            Json::Value reg;
+            reg["registration_id"] = row["registration_id"].as<int>();
+            reg["user_id"] = row["user_id"].as<int>();
+            reg["user_name"] = row["username"].as<std::string>();  // ✅ 使用 username 字段
+            reg["activity_id"] = row["activity_id"].as<int>();
+            reg["activity_title"] = row["activity_title"].as<std::string>();
+            reg["registration_date"] = row["registration_date"].as<std::string>();
+            reg["payment_status"] = row["payment_status"].as<std::string>();
+            reg["registration_status"] = row["registration_status"].as<std::string>();
+            registrations.append(reg);
+        }
+
+        response["registrations"] = registrations;
+        response["message"] = "报名信息获取成功";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        callback(resp);
+
+    } catch (const drogon::orm::DrogonDbException &e) {
+        LOG_ERROR << "Database error: " << e.base().what();
+        response["error"] = "数据库错误，无法获取报名信息";
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError);
+        callback(resp);
+    }
+}
+

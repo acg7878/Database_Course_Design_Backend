@@ -108,3 +108,79 @@ void ActivityCheckinController::getCheckinList(
   resp->setStatusCode(k200OK);
   callback(resp);
 }
+
+void ActivityCheckinController::getRegisteredActivitiesByUser(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) const {
+    auto dbClient = drogon::app().getDbClient();
+    Json::Value response;
+
+    // 从请求体中获取 user_id
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("user_id")) {
+        response["error"] = "缺少必需字段: user_id";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k400BadRequest); // 错误请求
+        callback(resp);
+        return;
+    }
+
+    int userId = (*json)["user_id"].asInt();
+
+    try {
+        // 查询用户报名的所有活动，且报名状态为 accepted
+        auto result = dbClient->execSqlSync(
+            "SELECT r.registration_id, a.activity_id, a.activity_title, a.activity_time, "
+            "a.activity_location, a.activity_description, r.payment_status "
+            "FROM activity_registration r "
+            "JOIN club_activity a ON r.activity_id = a.activity_id "
+            "WHERE r.user_id = ? AND r.registration_status = 'accepted'",
+            userId);
+
+        if (result.empty()) {
+            response["error"] = "未报名任何活动/活动报名审核中";
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+            resp->setStatusCode(k404NotFound); // 未找到
+            callback(resp);
+            return;
+        }
+
+        Json::Value registeredActivities(Json::arrayValue);
+
+        // 遍历查询结果
+        for (const auto &row : result) {
+            Json::Value activity;
+            int activityId = row["activity_id"].as<int>();
+
+            activity["registration_id"] = row["registration_id"].as<int>();
+            activity["activity_id"] = activityId;
+            activity["activity_title"] = row["activity_title"].as<std::string>();
+            activity["activity_time"] = row["activity_time"].as<std::string>();
+            activity["activity_location"] = row["activity_location"].as<std::string>();
+            activity["activity_description"] = row["activity_description"].as<std::string>();
+            activity["payment_status"] = row["payment_status"].as<std::string>();
+
+            // 查询签到表，检查是否有签到记录
+            auto checkinResult = dbClient->execSqlSync(
+                "SELECT COUNT(*) AS count FROM activity_checkin WHERE activity_id = ? AND user_id = ?",
+                activityId, userId);
+
+            // 如果有签到记录，设置 checkin_status 为 true，否则为 false
+            activity["checkin_status"] = checkinResult[0]["count"].as<int>() > 0;
+
+            registeredActivities.append(activity);
+        }
+
+        response["registered_activities"] = registeredActivities;
+        response["message"] = "报名活动列表获取成功";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK); // 成功返回 200 OK
+        callback(resp);
+    } catch (const drogon::orm::DrogonDbException &e) {
+        LOG_ERROR << "Database error: " << e.base().what();
+        response["error"] = "数据库错误，无法获取报名活动列表";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k500InternalServerError); // 服务器内部错误
+        callback(resp);
+    }
+}
